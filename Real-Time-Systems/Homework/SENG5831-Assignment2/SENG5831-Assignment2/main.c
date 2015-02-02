@@ -42,7 +42,7 @@ int main()
 	// helps guarantee a good load.
 	lcd_init_printf();
 	clear();
-	print("Loaded v0.1");
+	print("Loaded v0.2");
 	delay_ms(1000);
 
 	clear();
@@ -61,6 +61,8 @@ int main()
 	led_offr( ledConfigSize, ledConfig );
 	
 	clear();
+	print("for help use ?");
+	process_send_bytes("Use ? for a list of commands");
 	
 	while(1)
 	{
@@ -116,14 +118,14 @@ void modify_interval( uint8_t ledInfoSize, led_info_t *ledsInfo, int32_t change 
 	
 	while ( iterator < ledInfoSize )
 	{
-		ledsInfo[iterator].blinkInterval = (ledsInfo[iterator].blinkInterval > abs(change)) ? ledsInfo[iterator].blinkInterval + change : ((rand() % 1000) + 100);
-		lcd_goto_xy( 0, iterator % 2 );
+		ledsInfo[iterator].blinkInterval = ((ledsInfo[iterator].blinkInterval + change) > 0) ? ledsInfo[iterator].blinkInterval + change : ((rand() % 1000) + 100);
 		if ( iterator < 2 )
 		{
-			printf("%s: %.5lu", (iterator == 0) ? "TOP" : "BOT", ledsInfo[iterator].blinkInterval);
+			lcd_goto_xy( 0, iterator % 2 );
+			printf("%s: %.5ld", (iterator == 0) ? "TOP" : "BOT", ledsInfo[iterator].blinkInterval);
 		}
 		memset( myString, 0, sizeof(myString) );
-		sprintf( myString, "%p/%p(%d) = %.5lu", &(ledsInfo[iterator].ddr_loc), &(ledsInfo[iterator].port_loc), ledsInfo[iterator].port_bit, ledsInfo[iterator].blinkInterval );
+		sprintf( myString, "%p/%p(%d) = %.5ld", &(ledsInfo[iterator].ddr_loc), &(ledsInfo[iterator].port_loc), ledsInfo[iterator].port_bit, ledsInfo[iterator].blinkInterval );
 		process_send_bytes( myString );
 		iterator++;
 	}
@@ -219,8 +221,14 @@ void led_toggler( led_info_t ledsInfo )
 
 void wait_for_sending_to_finish()
 {
-	while(!serial_send_buffer_empty(USB_COMM))
+	int32_t timeout = SERIAL_SEND_TIMEOUT;
+	// need to have a timer here that can timeout
+	// this helps in the case the serial port is not connected and 
+	// we could hang here until reset.
+	while(!serial_send_buffer_empty(USB_COMM) && ( 0 < timeout-- ) )
+	{
 		serial_check();		// USB_COMM port is always in SERIAL_CHECK mode
+	}	
 }
 
 void process_received_byte(char byte, uint8_t ledInfoSize, led_info_t *ledsInfo)
@@ -263,6 +271,7 @@ void process_received_byte(char byte, uint8_t ledInfoSize, led_info_t *ledsInfo)
 
 void check_for_new_bytes_received( uint8_t ledInfoSize, led_info_t *ledsInfo )
 {
+	
 	while(serial_get_received_bytes(USB_COMM) != receive_buffer_position)
 	{
 		// Process the new byte that has just been received.

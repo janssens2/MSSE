@@ -9,10 +9,7 @@
 #ifndef SENG5831ASSIGNMENT2_H_
 #define SENG5831ASSIGNMENT2_H_
 
-//#define DDRLOC 0
-#define DDLOC 0
-//#define PORTLOC 0
-#define PORTBIT 1
+#define SERIAL_SEND_TIMEOUT 100
 
 typedef struct
 {
@@ -20,7 +17,7 @@ typedef struct
 	uint8_t dd_bit;
 	volatile uint8_t *port_loc;
 	uint8_t port_bit;
-	uint32_t blinkInterval;
+	int32_t blinkInterval;
 	uint32_t blinkCycles;
 	uint8_t blinkState;
 } led_info_t;
