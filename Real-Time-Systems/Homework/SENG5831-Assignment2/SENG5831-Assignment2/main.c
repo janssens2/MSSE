@@ -6,6 +6,8 @@
  *
  * Created: 1/30/2015 11:19:35 AM
  *  Author: janssens
+ *
+ *
  */
 
 #include <pololu/orangutan.h>
@@ -15,17 +17,19 @@
 #include <stdarg.h>
 #include "SENG5831Assignment2.h"
 
-const uint8_t led_config[2][2] = {{ DDD2, PORTD2 }, { DDD3, PORTD3 } };
-uint32_t blinkInterval[2] = { 400, 700 };
-uint8_t leds = 2;
-
 int main()
 {
 	uint32_t cycles = 0;
 	uint8_t index = 0;
-	uint8_t blinkState[] = { 1, 1 };
-	uint32_t blinkCycles[] = { 0, 0 };
-
+	
+	int32_t intervalModifier = 100;
+	
+	// DDR address, DDR bit, PORT address, PORT bit, cycle interval, cycles last updated, enable blink
+	const uint8_t ledConfigSize = 2;
+	led_info_t ledConfig[2] = {
+								{ &DDRD, DDD3, &PORTD, PORTD3, 700, 0, 1 }, 
+								{ &DDRD, DDD2, &PORTD, PORTD2, 500, 0, 1 }
+							 };
 	
 	// Set the baud rate to 9600 bits per second.  Each byte takes ten bit
 	// times, so you can get at most 960 bytes per second at this speed.
@@ -43,13 +47,10 @@ int main()
 
 	clear();
 	// Setup the LED's we are working with...
-	led_initialize( &DDRD, 2, DDD2, DDD3 );
+	led_initializer( ledConfigSize, ledConfig );
 	
 	// Turn on the LEDs we are working with...
-	for ( index = 0; index < leds; index++ )
-	{
-		led_on( &DDRD, &PORTD, led_config[index][PORTBIT] );
-	}
+	led_onr( ledConfigSize, ledConfig );
 	
 	clear();
 	printf("LED(s) ARE ON!");
@@ -57,10 +58,7 @@ int main()
 	delay_ms(5000);
 	
 	// Turn off the LEDs we are working with...
-	for ( index = 0; index < leds; index++ )
-	{
-		led_off( &DDRD, &PORTD, led_config[index][PORTBIT] );
-	}
+	led_offr( ledConfigSize, ledConfig );
 	
 	clear();
 	
@@ -71,7 +69,7 @@ int main()
 		// call this method often to make sure serial mode is checked
 		serial_check();
 		
-		check_for_new_bytes_received();
+		check_for_new_bytes_received( ledConfigSize, ledConfig );
 		
 		// check for ANY_BUTTON to be pressed
 		unsigned char button = get_single_debounced_button_press(ANY_BUTTON);
@@ -79,48 +77,56 @@ int main()
 		if ( button & TOP_BUTTON )
 		{
 			clear();
-			modify_interval( &blinkInterval[0], leds, 100 );
+			modify_interval( ledConfigSize, ledConfig, intervalModifier );
 		}
 		
 		// BOTTOM_BUTTON decreases blink rate
 		if ( button & BOTTOM_BUTTON )
 		{
-			modify_interval( &blinkInterval[0], leds, -100 );
+			modify_interval( ledConfigSize, ledConfig, (intervalModifier * -1) );
 		}
 		
 		// MIDDLE_BUTTON does something???
 		if ( button & MIDDLE_BUTTON )
 		{
 			clear();
-			print("MIDDLE button pressed what now?");
-			process_send_bytes("Middle button???");
-			process_send_bytes("Really, NYI");
+			intervalModifier = rand() % 1000;
+			printf("MIDDLE = %ld", intervalModifier );
+			process_send_bytes( "modified interval modifier" );
 		}
 		
-		for ( index=0; index < leds; index++ )
+		for ( index=0; index < ledConfigSize; index++ )
 		{
-			if ( blinkState[index] && ((blinkCycles[index] + blinkInterval[index]) < cycles) )
+			if ( ledConfig[index].blinkState && ((ledConfig[index].blinkCycles + ledConfig[index].blinkInterval) < cycles) )
 			{
-				led_toggle( &PORTD, led_config[index][PORTBIT] );
-				blinkCycles[index] = cycles;
+				led_toggler( ledConfig[index] );
+				ledConfig[index].blinkCycles = cycles;
 			}
 		}
 		
 	}
 }
 
-void modify_interval( uint32_t * led_intervals, const uint8_t leds, int8_t change )
+void modify_interval( uint8_t ledInfoSize, led_info_t *ledsInfo, int32_t change )
 {
-	uint8_t index = 0;
+	uint8_t iterator = 0;
+	char myString[32];
 	
 	clear();
-	for ( index = 0; index < leds; index++ )
-	{
-		led_intervals[index] = (led_intervals[index] > abs(change)) ? led_intervals[index] + change : 500;
-		lcd_goto_xy( 0, index );
-		printf("%s: %.5lu", (index == 0) ? "TOP" : "BOT", led_intervals[index]);
-	}
 	
+	while ( iterator < ledInfoSize )
+	{
+		ledsInfo[iterator].blinkInterval = (ledsInfo[iterator].blinkInterval > abs(change)) ? ledsInfo[iterator].blinkInterval + change : ((rand() % 1000) + 100);
+		lcd_goto_xy( 0, iterator % 2 );
+		if ( iterator < 2 )
+		{
+			printf("%s: %.5lu", (iterator == 0) ? "TOP" : "BOT", ledsInfo[iterator].blinkInterval);
+		}
+		memset( myString, 0, sizeof(myString) );
+		sprintf( myString, "%p/%p(%d) = %.5lu", &(ledsInfo[iterator].ddr_loc), &(ledsInfo[iterator].port_loc), ledsInfo[iterator].port_bit, ledsInfo[iterator].blinkInterval );
+		process_send_bytes( myString );
+		iterator++;
+	}
 }
 
 void led_initialize( volatile uint8_t *ddr, uint8_t numArgs, ... )
@@ -139,6 +145,17 @@ void led_initialize( volatile uint8_t *ddr, uint8_t numArgs, ... )
 	(*ddr) |= bits;
 }
 
+void led_initializer( uint8_t ledInfoSize, led_info_t *ledsInfo )
+{
+	uint8_t iterator = 0;
+
+	while ( iterator < ledInfoSize )
+	{
+		led_initialize( ledsInfo[iterator].ddr_loc, 1, ledsInfo[iterator].dd_bit );
+		iterator++;
+	}
+}
+
 void led_on( volatile uint8_t *ddr, volatile uint8_t *port, uint8_t bit )
 {
 	if ( ddr == &DDRD && port == &PORTD && bit == PORTD1 )
@@ -150,6 +167,17 @@ void led_on( volatile uint8_t *ddr, volatile uint8_t *port, uint8_t bit )
 	else
 	{
 		(*port) |= (1 << bit);
+	}
+}
+
+void led_onr( uint8_t ledInfoSize, led_info_t *ledsInfo )
+{
+	uint8_t iterator = 0;
+	
+	while ( iterator < ledInfoSize )
+	{
+		led_on( ledsInfo[iterator].ddr_loc, ledsInfo[iterator].port_loc, ledsInfo[iterator].port_bit );
+		iterator++;
 	}
 }
 
@@ -168,9 +196,25 @@ void led_off( volatile uint8_t *ddr, volatile uint8_t *port, uint8_t bit )
 	
 }
 
+void led_offr( uint8_t ledInfoSize, led_info_t *ledsInfo )
+{
+	uint8_t iterator = 0;
+	
+	while ( iterator < ledInfoSize )
+	{
+		led_off( ledsInfo[iterator].ddr_loc, ledsInfo[iterator].port_loc, ledsInfo[iterator].port_bit );
+		iterator++;
+	}
+}
+
 void led_toggle( volatile uint8_t *port, uint8_t bit )
 {
 	(*port) ^= (1 << bit);
+}
+
+void led_toggler( led_info_t ledsInfo )
+{
+	(*ledsInfo.port_loc) ^= (1 << ledsInfo.port_bit);
 }
 
 void wait_for_sending_to_finish()
@@ -179,7 +223,7 @@ void wait_for_sending_to_finish()
 		serial_check();		// USB_COMM port is always in SERIAL_CHECK mode
 }
 
-void process_received_byte(char byte)
+void process_received_byte(char byte, uint8_t ledInfoSize, led_info_t *ledsInfo)
 {
 	clear();		// clear LCD
 	print("RX: ");
@@ -198,12 +242,12 @@ void process_received_byte(char byte)
 
 		// 
 		case '+':
-			modify_interval( &blinkInterval[0], leds, 100 );
+			modify_interval( ledInfoSize, ledsInfo, 100 );
 			break;
 
 		// 
 		case '-':
-			modify_interval( &blinkInterval[0], leds, -100 );
+			modify_interval( ledInfoSize, ledsInfo, -100 );
 			break;
 
 		// 
@@ -217,12 +261,12 @@ void process_received_byte(char byte)
 	}
 }
 
-void check_for_new_bytes_received()
+void check_for_new_bytes_received( uint8_t ledInfoSize, led_info_t *ledsInfo )
 {
 	while(serial_get_received_bytes(USB_COMM) != receive_buffer_position)
 	{
 		// Process the new byte that has just been received.
-		process_received_byte(receive_buffer[receive_buffer_position]);
+		process_received_byte(receive_buffer[receive_buffer_position], ledInfoSize, ledsInfo );
 
 		// Increment receive_buffer_position, but wrap around when it gets to
 		// the end of the buffer.
