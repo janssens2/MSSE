@@ -11,15 +11,16 @@
 
 #define SERIAL_SEND_TIMEOUT 100
 
+// structure of data to keep track of for each LED
 typedef struct
 {
-	volatile uint8_t *ddr_loc;
-	uint8_t dd_bit;
-	volatile uint8_t *port_loc;
-	uint8_t port_bit;
-	int32_t blinkInterval;
-	uint32_t blinkCycles;
-	uint8_t blinkState;
+	volatile uint8_t *ddr_loc;		// example DDRD
+	uint8_t dd_bit;					// example DDD3
+	volatile uint8_t *port_loc;		// example PORTD
+	uint8_t port_bit;				// example PORTD3
+	int32_t blinkInterval;			// interval at which to blink for this LED
+	uint32_t blinkCycles;			// cycles value that the LED was last changed at
+	uint8_t blinkState;				// do we blink, 1=on 0=off
 } led_info_t;
 
 void led_on( volatile uint8_t *ddr, volatile uint8_t *port, uint8_t bit );
