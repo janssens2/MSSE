@@ -7,6 +7,12 @@
  * Created: 1/30/2015 11:19:35 AM
  *  Author: janssens
  *
+ * Description: ledConfig lets the program know what LEDs are to be programmed.
+ *              Any number of LEDs are allowed as long as there is a port to them.
+ *              Serial console is interactive, use a ? to get a list of commands.
+ *              +/- or top/bottom button on device will change blink interval
+ *              middle button on device will change the rate at which the blink
+ *              interval changes.
  *
  */
 
