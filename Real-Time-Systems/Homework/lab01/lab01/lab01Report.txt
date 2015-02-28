@@ -1,0 +1,96 @@
+﻿
+1. Use your original version of toggling the red LED that uses for-loops. Toggle all 3 at 1Hz.
+(Do not type in any menu options while you are toggling until the 1 minute is up).
+How good was your WCET analysis of the for loop? If it is very far off, adjust it.
+Why did I not want you to use the menu while running the experiment?
+
+The WCET is pretty close and depended on the __ii variable being declared as volatile.  When declared
+as volatile it was more consistent in the value that was found.  Did not want to type any operations
+on the menu during the experiment because this would cause cycles to be taken away from the computation
+being used to keep the LEDs blinking at a 1Hz rate.  With this cycles being taken away it could prolong the amount of time
+that it would take to execute over the for loop causing the light to blink at a rate longer than 1Hz.
+
+2. Use your software timer to toggle the red LED. Toggle all 3 at 1Hz. Simply observe the final toggle count.
+All should be about 60 (maybe the red is off by 1).
+If this is not the case, you probably set something up wrong, and you should fix it.
+
+All timers are reporting the correct value, but I found often that depending where I was in the loop of setting the color
+toggles value, the printing of those values would pull differently.  On most occassions these values were pulled where
+the values were close to the same value.
+
+3. Set all LEDs to toggle at 2Hz (500ms).
+Place a 90ms busy-wait for-loop into the ISR for the green LED.
+Toggle for 1 minute and record results.
+Now move the 90ms busy-wait for-loop from the green into the ISR for the yellow LED.
+Toggle for 1 minute and record results.
+What did you observe? Did the busy-wait disrupt any of the LEDs? Explain your results.
+
+90ms busy-wait on green:
+Red toggles:    111
+Green toggles:  121
+Yellow toggles: 121
+90ms busy-wait on yellow:
+Red toggles:    16
+Green toggles:  123
+Yellow toggles: 122
+
+The first busy-wait disrupted the red toggles because of the time spent waiting within the ISR.
+In this case for every other green toggle increment we were waiting an additional 90md within the ISR.
+This caused the release of the red toggle to not occur very often.
+
+The second busy-wait disrupted the red toggle quite a bit.  The rate at which the red toggle incremented
+its internal counter to know when to toggle the red counter was affected quite a bit.  The ISR for red
+was not able to run as often.  The yellow timer was fired every 100ms, which meant that we occupied 90+ms of cpu time
+within the ISR and caused the red to only be incremented for at most 10ms each 100ms of time.  This is why the
+red was affected so harshly.  Once the yellow timer exited, it was fired again very quickly, compared to how long the
+timer was meant to fire.
+
+
+4. Repeat #3, except use a 110ms busy-wait. You probably won’t be able to use the menu functions.
+If not, report that, and discuss what you observed from the blinking. Explain your results.
+
+110ms busy-wait on green:
+Red toggles:    108
+Green toggles:  121
+Yellow toggles: 120
+110ms busy-wait on yellow:
+
+No results
+
+On this iteration the timer within the green impacted the red by almost the same amount as in the previous experiment.
+BUT on the yellow, since within the 100ms timer we were doing a busy-wait of 110ms which is higher than when the timer fires
+we would have to wait for alot of cycles for the red to increment to the point where it would toggle the led (if it ever would).
+The menu was inoperable because of the amount of time we spent in the timers processing the wait.  We never were able to get through
+the cyclic executive. The yellow led should have been blinking for a bit longer than the time specified, but it was difficult to
+discern this level of detail.
+
+
+5. Repeat #3, except use a 510ms busy-wait. Explain your results.
+
+510ms busy-wait on the yellow timer causes the same results with regards to red blinking and the menu not working as noted in #4.
+This time it is more obvious that the yellow led is blinking at a rate about 5 times what it should have been doing.  This is
+based on a manual count of the blinks as compared to the green led.  Since the green is hardware driven at this point it provides
+a good basis for comparison.
+The busy-wait applied against the green produced:
+Red toggles:    62
+Green toggles:  124
+Yellow toggles: 74
+This exasberated the number of toggles.  Green stayed pretty consistent, mainly because we are toggling at 2Hz and the wait within
+one of the ISRs to toggle the green is not fired that often.  It is fired double the amount of time the green is toggling at, which
+is why we are using the overflow and compare A to increment the green counters.  Because of this wait, the yellow and red are affected
+because of the amount of time spent in the ISR.  Green and Red are unable to increment their own counters when the busy-wait is
+performed in the green ISR.
+
+
+6. Repeat #5 (i.e. 2Hz toggle with 510ms busy-wait), except place an sei() at the top of the ISR with the for-loop in it. Explain your results.
+
+Green busy-wait with sei at beginning shows:
+Red toggles:    61
+Green toggles:  120
+Yellow toggles: 72
+Yellow busy-wait with sei at beginning shows:
+Nothing, same response as prior experiences.  But the Yellow and the Green led's are blinking at the same rates now.
+Red doesn't appear to have its ISR being fired, or fired in an amount that is enough to trigger the led to blink.
+In this case we should be spinning in the timers and only blinking within the timers not allowing the cyclic executive that
+was kicked off with the red ISR to ever be reached.
+
