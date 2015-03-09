@@ -11,6 +11,10 @@
 #include <pololu/orangutan.h>
 #include <stdio.h>
 
+volatile unsigned char gLastM1A_val = 0;
+volatile unsigned char gLastM1B_val = 0;
+volatile int32_t gCounts = 0;
+
 int main()
 {
 	// setup the lcd and show the user the program version
@@ -32,8 +36,13 @@ int main()
 	uint32_t current_ms = get_ms();
 	int16_t motorSpeed = 0;
 
-	//pulse_in_start( (unsigned char[]) {IO_D3, IO_D2}, 2 );
-	encoders_init( IO_D2, IO_D3, IO_C4, IO_C5 );
+#ifdef USE_POLOLU_LIBRARY
+	encoders_init( IO_D3, IO_D2, IO_C4, IO_C5 );
+#else
+	PCMSK3 |= (1 << IO_D2) | (1 << IO_D3);  //0x0c
+	PCICR |= (1 << PCIE3);  //0x08
+	sei();
+#endif
 	
 	while(1)
 	{
@@ -54,7 +63,8 @@ int main()
 			pot_target = (pot_target - 32 >= pot_min) ? pot_target - 32 : pot_min;
 		}
 		
-		if ( ((current_ms - last_motor_change) % 100) == 0 )
+		// use an interrupt here instead....
+		if ( ((current_ms - last_motor_change) % 10) == 0 )
 		{
 			if ( pot_target < (pot_min + pot_change_interval) && pot < (pot_min + pot_change_interval) )
 			{
@@ -80,11 +90,15 @@ int main()
 			// avoid clearing the LCD to reduce flicker
 			lcd_goto_xy(0, 0);
 			print("encoder=");
-			print_long(encoders_get_counts_m1());               // print the trim pot position (0 - 1023)
+#ifdef USE_POLOLU_LIBRARY
+			print_long(encoders_get_counts_m1());
+#else
+			print_long(gCounts);      // print the number of encoder counts
+#endif
 			print("  ");              // overwrite any left over digits
 			lcd_goto_xy(0, 1);
 			print("spd=");
-			print_long(motorSpeed);        // print the resulting motor speed (-255 - 255)
+			print_long(motorSpeed);   // print the resulting motor speed (-255 - 255)
 			print("   ");
 			set_m1_speed(motorSpeed);
 			
@@ -100,3 +114,44 @@ int main()
 		}
 	}
 }
+
+#ifndef USE_POLOLU_LIBRARY
+ISR(PCINT3_vect)
+{
+	// ISR method to calculate the number of encoder counts based
+	// on direction
+	
+	// These 2 methods return pretty much the same thing,
+	// and it appears wrong to use the value as is.
+	//unsigned char m1a_val = is_digital_input_high(IO_D3);
+	//unsigned char m1a_val = (PIND & (1 << IO_D3));
+	// Determine if the pin is high and set to a 1 or 0
+	// a 1 or 0 allows us to get to 48 encoder checks for a single 
+	// revolution of the encoder magnet.
+	unsigned char m1a_val = (PIND & (1 << IO_D3)) > 0 ? 1 : 0;
+	
+	// These 2 methods return pretty much the same thing,
+	// and it appears wrong to use the value as is.
+	//unsigned char m1b_val = is_digital_input_high(IO_D2);
+	//unsigned char m1b_val = (PIND & (1 << IO_D2));
+	// Determine if the pin is high and set to a 1 or 0
+	// a 1 or 0 allows us to get to 48 encoder checks for a single
+	// revolution of the encoder magnet.
+	unsigned char m1b_val = (PIND & (1 << IO_D2)) > 0 ? 1 : 0;
+	
+	unsigned char plus_m1 = m1a_val ^ gLastM1B_val;
+	unsigned char minus_m1 = m1b_val ^ gLastM1A_val;
+	
+	if ( plus_m1 )
+	{
+		gCounts += 1;
+	}
+	if ( minus_m1 )
+	{
+		gCounts -= 1;
+	}
+	
+	gLastM1A_val = m1a_val;
+	gLastM1B_val = m1b_val;
+}
+#endif
